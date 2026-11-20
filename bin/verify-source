@@ -17,6 +17,9 @@ Commands:
                                   (requires cargo +risc0, lgs, python3)
   self-test                       Run dependency-free logic tests
 
+program-id/check detect the Logos project from scaffold.toml above the binary
+and run lgs there, so they work from any current directory.
+
 Honest note: guest image IDs are build-path dependent. Compare IDs only between
 builds made at the same absolute path. This tool does not weaken or replace
 on-chain verification.
@@ -44,11 +47,30 @@ PY
 
 require_lgs() { command -v lgs >/dev/null 2>&1 || die "lgs not found on PATH"; }
 
+# lgs refuses to run outside a logos-scaffold project, so find the project root
+# from the binary path and run there. scaffold.toml is the marker it looks for.
+find_project_root() {
+  local d="$1"
+  while :; do
+    [ -f "$d/scaffold.toml" ] && { printf '%s\n' "$d"; return 0; }
+    [ "$d" = "/" ] && break
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+
 program_id() {
   require_lgs
   [ -f "$1" ] || die "not a file: $1"
-  local id
-  id="$(lgs spel -- program-id "$1" --format hex 2>/dev/null | tr -d '\r' | tail -n 1)"
+  local bin dir root id
+  case "$1" in
+    /*) bin="$1" ;;
+    *) bin="$PWD/$1" ;;
+  esac
+  dir="$(dirname "$bin")"
+  root="$(find_project_root "$dir")" \
+    || die "no scaffold.toml found above $bin; run inside a Logos project or point at a binary in one"
+  id="$(cd "$root" && lgs spel -- program-id "$bin" --format hex 2>/dev/null | tr -d '\r' | tail -n 1 || true)"
   is_hex64 "$id" || die "lgs did not return a 32-byte hex program ID"
   printf '%s\n' "$id"
 }

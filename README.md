@@ -69,7 +69,14 @@ Optional: put `bin/` on your `PATH` to call `verify-source` directly.
 
 # Run the dependency-free logic tests
 ./bin/verify-source self-test
+
+# End-to-end check against your own real built guest (needs lgs + a scaffold)
+./tests/real-binary-smoke.sh path/to/registry.bin <expected-hex64>
 ```
+
+`program-id` and `check` locate the Logos project automatically by walking up
+from the binary path for `scaffold.toml` and running `lgs` there. You do not
+need to `cd` into the project first, and relative binary paths work.
 
 `check` exits non-zero on a mismatch or a malformed ID, so it is safe to use in
 a shell script or CI job. It prints `built=` and `expected=` values to make the
@@ -90,6 +97,7 @@ It is a local measuring and comparison tool, nothing more.
 | --- | --- |
 | `bin/verify-source` | The CLI. Bash + python3, no third-party crates or npm packages. |
 | `tests/self-test.sh` | Dependency-free tests for base58, validation, and exit codes. |
+| `tests/real-binary-smoke.sh` | Optional end-to-end check against a real guest `.bin` you build yourself. |
 | `run-tests.sh` | One-command test runner with exit code. |
 | `docs/PORTABLE-PROGRAM-IDS.md` | How to remove path-specific ID assertions from a CI workflow. |
 | `RESULT.md` | Exact commands, results, and honest limitations. |

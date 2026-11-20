@@ -54,12 +54,33 @@ All-zero vector:
 `--help` exits 2 as designed (no command given); the usage text is printed to
 stderr.
 
+### End-to-end run against a real built guest
+
+`tests/real-binary-smoke.sh` was run against the real 463,236-byte
+`registry.bin` at
+`/home/xps/logos-work/registry/methods/guest/target/riscv32im-risc0-zkvm-elf/docker/registry.bin`,
+from a working directory outside the project (project root detected via
+`scaffold.toml`):
+
+```text
+=== real binary: .../docker/registry.bin ===
+program-id: 4df7d5396b68a16aae6d0f768ef447a0055eb43866827154f71139e486265144
+MATCH: 4df7d5396b68a16aae6d0f768ef447a0055eb43866827154f71139e486265144
+expected-ID check: PASS
+wrong-ID rejection: PASS (exit 1)
+real-binary smoke: PASS
+```
+
+This is a real `lgs` readout of an actual guest binary, not a mock. It says
+nothing about whether that program is deployed or correct.
+
 ## What was measured, and what was not
 
 **Measured here:** real executions of the CLI's pure logic and validation
-paths. The base58 implementation reproduces the independently known ID/base58
-pair exactly, and rejects malformed input. The `repro` command was **not**
-executed in this session: it needs a full Logos scaffold and a fresh guest
+paths, plus a real end-to-end `lgs` readout and match/mismatch check on an
+actual built guest binary. The base58 implementation reproduces the
+independently known ID/base58 pair exactly, and rejects malformed input. The
+`repro` command was **not** executed in this session: it needs a fresh guest
 build (which is slow), and no result from it is claimed here.
 
 **Not implemented / not claimed:**
