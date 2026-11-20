@@ -17,6 +17,11 @@ bash run-tests.sh
 Expected: syntax checks pass, six self-test checks pass, SPDX count matches,
 and the script exits 0. If you get anything else, that is a bug report.
 
+Our own run of the full adversarial checklist is in
+[`SELF-TEST-RESULTS.md`](SELF-TEST-RESULTS.md): 11/11 cases passed, with the
+exact commands and exit codes. That is self-testing, not third-party review —
+please try to reproduce or break it.
+
 ## Real guest test (needs a Logos scaffold and `lgs`)
 
 Build your own guest, then:
