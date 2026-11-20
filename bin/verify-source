@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT AND Apache-2.0
+# proclaim-verify: practical checks for RISC Zero guest binaries used with SPEL/LEZ.
+# This tool runs real local commands. It does not submit anything, deploy anything,
+# or claim that a guest is on-chain.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: verify-source <command> [args]
+
+Commands:
+  base58 <hex64>                  Base58-encode a 32-byte program ID
+  program-id <registry.bin>       Print the SPEL program ID of a wrapped guest
+  check <registry.bin> <hex64>    Exit 0 if the built ID matches, else exit 1
+  repro --source DIR --work DIR   Rebuild a guest at a canonical path and print its ID
+                                  (requires cargo +risc0, lgs, python3)
+  self-test                       Run dependency-free logic tests
+
+Honest note: guest image IDs are build-path dependent. Compare IDs only between
+builds made at the same absolute path. This tool does not weaken or replace
+on-chain verification.
+EOF
+}
+
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+is_hex64() { printf '%s' "$1" | grep -Eq '^[0-9a-f]{64}$'; }
+
+base58_encode() {
+  python3 - "$1" <<'PY'
+import sys
+alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+h = sys.argv[1].rjust(64, "0")
+n = int(h, 16)
+out = ""
+while n:
+    n, r = divmod(n, 58)
+    out = alphabet[r] + out
+zeros = (len(h) - len(h.lstrip("0"))) // 2
+print("1" * zeros + out)
+PY
+}
+
+require_lgs() { command -v lgs >/dev/null 2>&1 || die "lgs not found on PATH"; }
+
+program_id() {
+  require_lgs
+  [ -f "$1" ] || die "not a file: $1"
+  local id
+  id="$(lgs spel -- program-id "$1" --format hex 2>/dev/null | tr -d '\r' | tail -n 1)"
+  is_hex64 "$id" || die "lgs did not return a 32-byte hex program ID"
+  printf '%s\n' "$id"
+}
+
+cmd="${1:-}"
+[ "$cmd" != "" ] || { usage; exit 2; }
+shift || true
+
+case "$cmd" in
+  base58)
+    [ $# -eq 1 ] || die "base58 needs one hex64 argument"
+    is_hex64 "$1" || die "expected 64 lowercase hex characters"
+    base58_encode "$1"
+    ;;
+  program-id)
+    [ $# -eq 1 ] || die "program-id needs one binary path"
+    program_id "$1"
+    ;;
+  check)
+    [ $# -eq 2 ] || die "check needs <registry.bin> <hex64>"
+    is_hex64 "$2" || die "expected 64 lowercase hex characters"
+    got="$(program_id "$1")"
+    if [ "$got" = "$2" ]; then
+      printf 'MATCH: %s\n' "$got"
+      exit 0
+    fi
+    printf 'MISMATCH: built=%s expected=%s\n' "$got" "$2" >&2
+    exit 1
+    ;;
+  repro)
+    SRC="" WORK=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --source) SRC="${2:-}"; shift 2 ;;
+        --work) WORK="${2:-}"; shift 2 ;;
+        *) die "unknown repro argument: $1" ;;
+      esac
+    done
+    [ -n "$SRC" ] && [ -d "$SRC" ] || die "repro needs --source DIR"
+    [ -n "$WORK" ] || die "repro needs --work DIR"
+    command -v cargo >/dev/null 2>&1 || die "cargo not found; run 'source ~/.cargo/env' first"
+    require_lgs
+    CANON="$WORK/home/runner/work/proclaim/proclaim"
+    mkdir -p "$CANON"
+    cp -a "$SRC"/. "$CANON"/
+    (
+      cd "$CANON"
+      export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+      export RUSTFLAGS='--cfg getrandom_backend="custom"'
+      cargo +risc0 build --release \
+        --manifest-path methods/guest/Cargo.toml \
+        --target riscv32im-risc0-zkvm-elf
+      if [ -f tools/make-bin/Cargo.toml ]; then
+        cargo build --release --manifest-path tools/make-bin/Cargo.toml
+        mkdir -p methods/guest/target/riscv32im-risc0-zkvm-elf/docker
+        BIN=methods/guest/target/riscv32im-risc0-zkvm-elf/docker/registry.bin
+        tools/make-bin/target/release/make-bin \
+          methods/guest/target/riscv32im-risc0-zkvm-elf/release/registry "$BIN"
+      else
+        BIN=methods/guest/target/riscv32im-risc0-zkvm-elf/release/registry
+      fi
+      printf 'canonical build path: %s\n' "$CANON"
+      printf 'program ID: %s\n' "$(program_id "$BIN")"
+      printf 'base58: %s\n' "$(base58_encode "$(program_id "$BIN")")"
+      printf 'NOTE: this ID is valid for this absolute build path only.\n'
+    )
+    ;;
+  self-test)
+    bash "$(dirname "$0")/../tests/self-test.sh"
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
